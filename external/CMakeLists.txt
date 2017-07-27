@@ -96,6 +96,13 @@ ExternalProject_Add("ignition_transport"
     "-DPKG_CONFIG_PATH=${FIRST_COMMIT_EXTERNAL_INSTALL_DIR}/lib/pkgconfig"
   DEPENDS "ignition_math" "ignition_msgs" "protobuf" "zmq" "cppzmq" "util_linux")
 
+ExternalProject_Add("eigen"
+  PREFIX "${FIRST_COMMIT_EXTERNAL_SRC_DIR}/eigen"
+  URL "https://bitbucket.org/eigen/eigen/get/3.3.tar.gz"
+  URL_HASH SHA256=045efcfae7fc2f243abb2e80181ae7c6952dcf6cd66623f9395f37452c70e45a
+  INSTALL_DIR "${FIRST_COMMIT_EXTERNAL_INSTALL_DIR}"
+  CMAKE_ARGS "${external_cmake_args}")
+
 ExternalProject_Add("opencv"
   PREFIX "${FIRST_COMMIT_EXTERNAL_SRC_DIR}/opencv"
   URL "https://github.com/opencv/opencv/archive/3.2.0.tar.gz"
@@ -104,4 +111,3 @@ ExternalProject_Add("opencv"
   CMAKE_ARGS
     "${external_cmake_args}"
     "-DPKG_CONFIG_PATH=${FIRST_COMMIT_EXTERNAL_INSTALL_DIR}/lib/pkgconfig")
-
