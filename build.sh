@@ -5,5 +5,5 @@ docker run \
   --user ${USER} \
   -e USER=${USER} \
   -e USERID=${UID} \
-  -v ${DIR}:${HOME}/first_commit \
+  -v ${DIR}:/home/${USER}/first_commit \
   first_commit/build
