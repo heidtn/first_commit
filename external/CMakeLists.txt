@@ -99,7 +99,7 @@ ExternalProject_Add("ignition_transport"
 ExternalProject_Add("eigen"
   PREFIX "${FIRST_COMMIT_EXTERNAL_SRC_DIR}/eigen"
   URL "https://bitbucket.org/eigen/eigen/get/3.3.tar.gz"
-  URL_HASH SHA256=045efcfae7fc2f243abb2e80181ae7c6952dcf6cd66623f9395f37452c70e45a
+  URL_HASH SHA256=07a6786d84c1e675c003c89bb99c32a93e14164968d3a1d5cb52c77b47c12f12
   INSTALL_DIR "${FIRST_COMMIT_EXTERNAL_INSTALL_DIR}"
   CMAKE_ARGS "${external_cmake_args}")
 
