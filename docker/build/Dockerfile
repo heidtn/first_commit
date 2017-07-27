@@ -8,12 +8,14 @@ ARG USERID
 RUN apt-get update && \
     apt-get install -y git mercurial build-essential autoconf automake libtool pkg-config unzip \
         cmake ninja-build curl ruby-dev bison autopoint gettext && \
+    apt-get install -y vim net-tools && \
     apt-get clean
 
 RUN echo "creating new ${USER} with UID ${USERID}" && \
     # Add user to tty group because the linux-util install step requires the ability to run
     # "chgrp tty ..."
     useradd -m ${USER} -u ${USERID} -G tty && \
+    adduser ${USER} sudo && \
     mkdir -p /home/${USER} && \
     chown -R ${USER} /home/${USER}
 
