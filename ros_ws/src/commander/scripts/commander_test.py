@@ -2,7 +2,7 @@
 
 import rospy
 from geometry_msgs.msg import Twist
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Pose
 from std_msgs.msg import String
 
 from commander.srv import CommandState
@@ -13,11 +13,13 @@ def show_help():
     print "Press t to takeoff\n" \
           "Press l to land\n" \
           "Press r to start record (ctrl+c to stop)\n" \
-          "Press p to playback recorded path\n" \
+          "Press f to playback recorded path\n" \
+          "Press z to get zero position\n" \
           "Press h for this menu\n"
 
 def pose_callback(msg):
     global cur_pose
+    cur_pose = msg
 
 if __name__ == "__main__":
     global cur_pose
@@ -30,6 +32,7 @@ if __name__ == "__main__":
     rospy.loginfo("Service found!")
 
     poselist = []
+    zero_pose = None
     
     while True:
         command = raw_input("Enter number for command (h for help): ")
@@ -55,7 +58,13 @@ if __name__ == "__main__":
             rate = rospy.Rate(1)
             try:
                 while True:
-                    poselist.append(cur_pose)
+                    pose_to_add = PoseStamped()
+                    pose_to_add.pose.position.x = cur_pose.pose.position.x - zero_pose.pose.position.x
+                    pose_to_add.pose.position.y = cur_pose.pose.position.y - zero_pose.pose.position.y
+                    pose_to_add.pose.position.z = cur_pose.pose.position.z - zero_pose.pose.position.z
+
+                    poselist.append(pose_to_add)
+                    rospy.loginfo("Got pose: {}".format(pose_to_add))
                     rate.sleep()
             except KeyboardInterrupt:
                 rospy.loginfo("Got {} poses".format(len(poselist)))
@@ -66,3 +75,7 @@ if __name__ == "__main__":
                 rospy.loginfo("Completed Takeoff request with response: {}".format(resp))
             except rospy.ServiceException, e:
                 print "Service call failed: %s"%e
+
+        if command == "z":
+            zero_pose = cur_pose
+            rospy.loginfo("Got zero pose: {}".format(zero_pose))

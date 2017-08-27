@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import datetime
 import rospy
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
@@ -12,12 +12,12 @@ import sys
 import copy
 import threading
 
-ARRIVAL_DISTANCE = 0.07
+ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
 
 
 def q_to_yaw(q):
-    return np.arctan2(2.0*(q.y*q.z + q.w*q.x), q.w*q.w - q.x*q.x - q.y*q.y + q.z*q.z)
+    return np.arctan2(2.0*(q.x*q.y + q.w*q.z), 1-2*(q.y*q.y + q.z*q.z))
 
 class Controller:
     """
@@ -33,9 +33,14 @@ class Controller:
         self.goal_pose = np.array([0., 0., 0., 0.])
         self.path_poses = []
         self.cur_pose = np.array([0., 0., 0., 0.])
-        self.Kp = np.array([.6, .6, .6, 6.])
+        self.Kp = np.array([.6, .6, .6, .8])
+        # self.Kp = np.array([1., 1., 1., 1.])
         self.iter_loop = 0
         self.mode = "Idle"  # Idle, Takeoff, Land, Hover, Followpath
+        self.logfile = open(str(datetime.datetime.now().isoformat()) + '.log', 'w+')
+
+    def __del__(self):
+        self.logfile.close()
 
     def pose_callback(self, msg):
         q = msg.pose.orientation
@@ -45,30 +50,28 @@ class Controller:
                                        msg.pose.position.y,
                                        msg.pose.position.z,
                                        yaw])
-            rospy.loginfo("base pose is".format(self.base_pose))
+            self.log("base pose is".format(self.base_pose))
+            
             return            
 
-        self.cur_pose = np.array([msg.pose.position.x,
+        measured_pose = np.array([msg.pose.position.x,
                                   msg.pose.position.y,
                                   msg.pose.position.z,
-                                  yaw]) - self.base_pose
+                                  yaw])
+        self.cur_pose = measured_pose - self.base_pose
 
         # Proportional controller
         E = self.goal_pose - self.cur_pose
+
+        # Bound the rotational error
+        E[3] = (E[3] + np.pi) % 2*np.pi
+        if E[3] < 0:
+            E[3] += np.pi*2.
+        E[3] -= np.pi
+
         y = E*self.Kp
 
-        y = np.clip(y, -.3, .3)
-        y[3] = -y[3]
-
         goal_vel = Twist()
-
-        self.iter_loop += 1
-        if self.iter_loop % 60 == 0:
-            rospy.loginfo("Reading: {}".format(self.iter_loop % 60))
-            rospy.loginfo(E)
-            rospy.loginfo(self.cur_pose)
-            rospy.loginfo(self.goal_pose)
-
 
         # rotate to global frame
         xy = np.array([[y[0]],[y[1]]])
@@ -82,33 +85,47 @@ class Controller:
         goal_vel.linear.z = y[2]
         goal_vel.angular.z = y[3]
 
+        self.iter_loop += 1
+        if self.iter_loop % 60 == 0:
+            self.log("Reading: {}".format(self.iter_loop // 60))
+            self.log(measured_pose)
+            self.log(self.cur_pose)
+            self.log(self.goal_pose)
+
+        y = np.clip(y, -.3, .3)
+        y[3] = -y[3]
+
         if self.mode == "Takingoff":
             self.prop_start_pub.publish(Empty())
             goal_vel.linear.z = 0.4
             if abs(self.cur_pose[2] - HOVER_HEIGHT) < ARRIVAL_DISTANCE:
                 self.mode = "Hovering"
-                rospy.loginfo("Reached hover height!")
+                self.log("Reached hover height!")
         elif self.mode == "Landing":
             goal_vel.linear.z = -0.4
             if abs(self.cur_pose[2] - 0) < ARRIVAL_DISTANCE:
                 self.mode = "Idle"
-                rospy.loginfo("Landed!")
+                self.log("Landed!")
                 self.prop_stop_pub.publish(Empty())
         elif self.mode == "Followingpath":
-            if abs(self.cur_pose - self.goal_pose) < ARRIVAL_DISTANCE:
-                rospy.loginfo("Reached point: {}".format(self.goal_pose))
+            if np.linalg.norm(self.cur_pose - self.goal_pose) < ARRIVAL_DISTANCE:
+                self.log("Reached point: {}".format(self.goal_pose))
                 if len(self.path_poses) > 0:
                     self.goal_pose = self.path_poses.pop(0)
                 else:
                     self.mode = "Hovering"
-                    rospy.loginfo("Done following path, hovering...")
+                    self.log("Done following path, hovering...")
 
         if self.mode != "Idle":
             self.pub.publish(goal_vel)
 
+    def log(self, text):
+        rospy.loginfo(text)
+        self.logfile.write(text + '\n')
+
     def set_state(self, command, path=None):
         #TODO(heidt) add a lock here!!!
-        rospy.loginfo("Attempting to set state to: {}".format(command))
+        self.log("Attempting to set state to: {}".format(command))
         if command == "Takeoff":
             if self.mode == "Idle":
                 self.goal_pose = np.array([0., 0., HOVER_HEIGHT, 0.])
@@ -116,11 +133,13 @@ class Controller:
         elif command == "Followpath":
             if self.mode in ["Hovering", "Followingpath"]:
                 self.path_poses = []
-                for pose in path:
+                for pose_stamped in path:
+                    pose = pose_stamped.pose
                     yaw = q_to_yaw(pose.orientation)
-                    p = np.array([pose[0], pose[1], pose[2], yaw])
+                    p = np.array([pose.position.x, pose.position.y, pose.position.z, yaw])
                     self.path_poses.append(p)
                     self.mode = "Followingpath"
+                self.goal_pose = self.path_poses.pop(0)
         elif command == "Hover":
             if self.mode in ["Followingpath"]:
                 self.goal_pose = np.array([0., 0., HOVER_HEIGHT, 0.])
@@ -172,13 +191,16 @@ class Commander:
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         elif self.controller.mode == "Hovering":
-            if cmd in ["Land", "Followpath"]:
+            if cmd in "Land":
                 self.controller.set_state(cmd)
+            if cmd == "Followpath":
+                self.controller.set_state(cmd, path=poses)
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         elif self.controller.mode == "Followingpath":
             if cmd in ["Hover", "Land"]:
-                self.controller.set_state(cmd, path=poses)
+                print "got poses: ", poses
+                self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         else:
