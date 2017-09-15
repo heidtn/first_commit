@@ -37,14 +37,10 @@ if(CATKIN_BUILD)
     )
 endif()
 
-add_subdirectory( src/OpticalFlow OpticalFlow )
-set( OpticalFlow_LIBS "OpticalFlow" )
-
 include_directories(
 	include
 	${catkin_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}
-	${OpticalFlow_INCLUDE_DIRS}
 	src # for mavlink
 	./libcamera/inc
 	./libcamera/src
@@ -66,13 +62,6 @@ if (camera_LIBRARIES)
       ${camera_LIBRARIES}
     )
 
-    add_executable(optical_flow src/optical_flow.cpp src/ringbuffer.cpp)
-    target_link_libraries(optical_flow yaml-cpp
-        ${catkin_LIBRARIES}
-        ${OpenCV_LIBS}
-        snap_cam
-        ${OpticalFlow_LIBS}
-    )
 endif()
 
 # add the ROS executables

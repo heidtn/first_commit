@@ -43,7 +43,6 @@
 
   <build_depend>cv_bridge</build_depend>
   <build_depend>image_transport</build_depend>
-  <build_depend>klt_feature_tracker</build_depend>
   <build_depend>libopencv-dev</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
@@ -54,7 +53,6 @@
 
   <run_depend>cv_bridge</run_depend>
   <run_depend>image_transport</run_depend>
-  <run_depend>klt_feature_tracker</run_depend>
   <run_depend>libopencv-dev</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
