@@ -28,11 +28,70 @@
 
 image_transport::Publisher image_pub;
 
+// TODO(heidt) we can probably get these from ROS
+float F_X = 279.60814589461154;
+float F_Y = 280.1693782018111;
+float C_X = 222.49106441516423;
+float C_Y = 317.7691476613439;
 
-void imageCallback(const cv::Mat &img, uint64_t time_stamp)
-{
+
+void rot90(cv::Mat &matImage, int rotflag){
+  //1=CW, 2=CCW, 3=180
+  if (rotflag == 1){
+    transpose(matImage, matImage);  
+    flip(matImage, matImage,1); //transpose+flip(1)=CW
+  } else if (rotflag == 2) {
+    transpose(matImage, matImage);  
+    flip(matImage, matImage,0); //transpose+flip(0)=CCW     
+  } else if (rotflag ==3){
+    flip(matImage, matImage,-1);    //flip(-1)=180          
+  } else if (rotflag != 0){ //if not 0,1,2,3:
+    cout  << "Unknown rotation flag(" << rotflag << ")" << endl;
+  }
+}
+
+
+void filterNoise(cv::Mat &img) {
+	std::vector<vector<Point> > contours;
+	std::vector<Vec4i> hierarchy;
+	cv::findContours(img.clone(), contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+
+	std::vector<std::vector<Point>> good_contours;
+	for (int i = 0; i< contours.size(); i++)
+	{
+	    double area = cv::contourArea(contours[i]);
+	    if (area > 200)
+	    {
+	        good_contours.push_back(contours[i]);
+	    }
+	}
+	drawContours(img, contours, savedContour, Scalar(255), CV_FILLED, 8);
+}
+
+
+void findCorners(const cv::Mat &img) {
+	cv::Mat hsv, mask, dilated;
+
+	// Convert to HSV and threshold
+	cv::cvtColor(img, hsv, CV_BGR2HSV);
+	cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
+
+	// Dilate and remove noise
+	// TODO(heidt) the morphology method might be improved
+	cv::Mat element = getStructuringElement(MORPH_ELLIPSE,
+                                        cv::Size( 2*5 + 1, 2*5 + 1 ),
+                                        cv::Point(5, 5));
+	cv::dilate(mask, dilated, element);
+
+
+}
+
+void imageCallback(const cv::Mat &img, uint64_t time_stamp) {
 	// convert OpenCV image to ROS message
-	cv_bridge::CvImage cvi;
+
+	rot90(img, 1);
+	findCorners(img);
+/*	cv_bridge::CvImage cvi;
 	cvi.header.stamp = ros::Time::now();
 	cvi.header.frame_id = "image";
 	cvi.image = img;
@@ -46,7 +105,7 @@ void imageCallback(const cv::Mat &img, uint64_t time_stamp)
 
 	sensor_msgs::Image im;
 	cvi.toImageMsg(im);
-	image_pub.publish(im);
+	image_pub.publish(im);*/
 }
 
 int main(int argc, char **argv)
