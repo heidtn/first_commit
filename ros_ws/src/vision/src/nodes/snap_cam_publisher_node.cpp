@@ -29,10 +29,11 @@
 image_transport::Publisher image_pub;
 
 // TODO(heidt) we can probably get these from ROS
-float F_X = 279.60814589461154;
-float F_Y = 280.1693782018111;
-float C_X = 222.49106441516423;
-float C_Y = 317.7691476613439;
+double F_X = 279.60814589461154;
+double F_Y = 280.1693782018111;
+double C_X = 222.49106441516423;
+double C_Y = 317.7691476613439;
+double CORNERINESS = .04;
 
 
 void rot90(cv::Mat &matImage, int rotflag){
@@ -51,45 +52,182 @@ void rot90(cv::Mat &matImage, int rotflag){
 }
 
 
-void filterNoise(cv::Mat &img) {
-	std::vector<vector<Point> > contours;
-	std::vector<Vec4i> hierarchy;
-	cv::findContours(img.clone(), contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+void filterNoise(cv::Mat &img, int min_area=200) {
+	cv::Mat result(img.size(), CV_8UC1, cv::Scalar(0));
+	std::vector<std::vector<cv::Point> > contours;
+	std::vector<cv::Vec4i> hierarchy;
+	cv::findContours(img.clone(), contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
 
-	std::vector<std::vector<Point>> good_contours;
+	std::vector<std::vector<cv::Point>> good_contours;
 	for (int i = 0; i< contours.size(); i++)
 	{
 	    double area = cv::contourArea(contours[i]);
-	    if (area > 200)
+	    if (area > min_area)
 	    {
 	        good_contours.push_back(contours[i]);
 	    }
 	}
-	drawContours(img, contours, savedContour, Scalar(255), CV_FILLED, 8);
+	cv::drawContours(result, good_contours, -1, cv::Scalar(255), CV_FILLED, 8);
+	std::cout << "adning" << result.size() << " " << img.size() << std::endl;
+
+	img &= result;
 }
 
 
-void findCorners(const cv::Mat &img) {
-	cv::Mat hsv, mask, dilated;
+void thinningIteration(cv::Mat& im, int iter)
+{
+    cv::Mat marker = cv::Mat::zeros(im.size(), CV_8UC1);
 
+    for (int i = 1; i < im.rows-1; i++)
+    {
+        for (int j = 1; j < im.cols-1; j++)
+        {
+            uchar p2 = im.at<uchar>(i-1, j);
+            uchar p3 = im.at<uchar>(i-1, j+1);
+            uchar p4 = im.at<uchar>(i, j+1);
+            uchar p5 = im.at<uchar>(i+1, j+1);
+            uchar p6 = im.at<uchar>(i+1, j);
+            uchar p7 = im.at<uchar>(i+1, j-1);
+            uchar p8 = im.at<uchar>(i, j-1);
+            uchar p9 = im.at<uchar>(i-1, j-1);
+
+            int A  = (p2 == 0 && p3 == 1) + (p3 == 0 && p4 == 1) + 
+                     (p4 == 0 && p5 == 1) + (p5 == 0 && p6 == 1) + 
+                     (p6 == 0 && p7 == 1) + (p7 == 0 && p8 == 1) +
+                     (p8 == 0 && p9 == 1) + (p9 == 0 && p2 == 1);
+            int B  = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+            int m1 = iter == 0 ? (p2 * p4 * p6) : (p2 * p4 * p8);
+            int m2 = iter == 0 ? (p4 * p6 * p8) : (p2 * p6 * p8);
+
+            if (A == 1 && (B >= 2 && B <= 6) && m1 == 0 && m2 == 0)
+                marker.at<uchar>(i,j) = 1;
+        }
+    }
+
+    im &= ~marker;
+}
+
+/**
+ * Function for thinning the given binary image
+ *
+ * @param  im  Binary image with range = 0-255
+ */
+void thinning(cv::Mat& im)
+{
+    im /= 255;
+
+    cv::Mat prev = cv::Mat::zeros(im.size(), CV_8UC1);
+    cv::Mat diff;
+
+    do {
+        thinningIteration(im, 0);
+        thinningIteration(im, 1);
+        cv::absdiff(im, prev, diff);
+        im.copyTo(prev);
+    } 
+    while (cv::countNonZero(diff) > 0);
+
+    im *= 255;
+}
+
+
+
+std::string type2str(int type) {
+  std::string r;
+
+  uchar depth = type & CV_MAT_DEPTH_MASK;
+  uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+  switch ( depth ) {
+    case CV_8U:  r = "8U"; break;
+    case CV_8S:  r = "8S"; break;
+    case CV_16U: r = "16U"; break;
+    case CV_16S: r = "16S"; break;
+    case CV_32S: r = "32S"; break;
+    case CV_32F: r = "32F"; break;
+    case CV_64F: r = "64F"; break;
+    default:     r = "User"; break;
+  }
+
+  r += "C";
+  r += (chans+'0');
+
+  return r;
+}
+
+
+void findCorners(cv::Mat &img) {
+	cv::Mat hsv, mask, dilated, diltaed_thinned, cleaned_thin, corners, big_corners, corner_thresh;
+
+	std::cout << "convert and threshold" << std::endl;
 	// Convert to HSV and threshold
 	cv::cvtColor(img, hsv, CV_BGR2HSV);
 	cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
 
 	// Dilate and remove noise
 	// TODO(heidt) the morphology method might be improved
-	cv::Mat element = getStructuringElement(MORPH_ELLIPSE,
-                                        cv::Size( 2*5 + 1, 2*5 + 1 ),
-                                        cv::Point(5, 5));
-	cv::dilate(mask, dilated, element);
+	cv::dilate(mask, dilated, cv::Mat());
 
+	std::cout << "filter noise" << std::endl;
+
+	filterNoise(dilated);
+
+	cv::imwrite("/home/linaro/temp_ims/dilated.jpg", dilated);
+
+	std::cout << "thin image" << std::endl;
+
+	thinning(dilated);
+	cv::imwrite("/home/linaro/temp_ims/thinned.jpg", dilated);
+
+	std::cout << "dilate" << std::endl;
+
+	cv::dilate(dilated, diltaed_thinned, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
+	filterNoise(diltaed_thinned, 100);
+	cv::imwrite("/home/linaro/temp_ims/diltaed_thinned.jpg", diltaed_thinned);
+
+	std::cout << "Harris corners" << std::endl;
+
+	cornerHarris(diltaed_thinned, corners, 16, 1, 0.04);
+	cv::imwrite("/home/linaro/temp_ims/corners.jpg", corners);
+
+	cv::dilate(corners, big_corners, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
+
+	double min, max;
+	cv::minMaxLoc(big_corners, &min, &max);
+	std::cout << "minmax " << min << " " << max << std::endl;
+
+	// TODO(heidt) fix bad corners)
+	threshold(big_corners, corner_thresh, 0.5*max, 255, CV_THRESH_BINARY);
+	corner_thresh.convertTo(corner_thresh, CV_8UC1);
+
+	cv::imwrite("/home/linaro/temp_ims/corners.jpg", corner_thresh);
+
+	std::vector<std::vector<cv::Point> > contours;
+	std::vector<cv::Vec4i> hierarchy;
+	cv::findContours(corner_thresh.clone(), contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
+
+	/// Get the moments
+	std::vector<cv::Moments> mu(contours.size() );
+	for( int i = 0; i < contours.size(); i++ ) { 
+		mu[i] = moments( contours[i], false ); 
+	}
+
+	///  Get the mass centers:
+	std::vector<cv::Point2f> mc( contours.size() );
+	for( int i = 0; i < contours.size(); i++ ) { 
+		mc[i] = cv::Point2f( mu[i].m10/mu[i].m00 , mu[i].m01/mu[i].m00 ); 
+	}
+
+	std::cout << "Found " << mc.size() << " courners!" << std::endl;
 
 }
 
-void imageCallback(const cv::Mat &img, uint64_t time_stamp) {
+void imageCallback(const cv::Mat &img_ret, uint64_t time_stamp) {
 	// convert OpenCV image to ROS message
-
+	cv::Mat img = img_ret.clone();
+	std::cout << "rotating image" << std::endl;
 	rot90(img, 1);
+	std::cout << "finding corners" << std::endl;
 	findCorners(img);
 /*	cv_bridge::CvImage cvi;
 	cvi.header.stamp = ros::Time::now();
@@ -178,7 +316,7 @@ int main(int argc, char **argv)
 		cfg.func = CAM_FUNC_HIRES;
 	}
 
-	if (res == "4k") {
+/*	if (res == "4k") {
 		cfg.pSize = CameraSizes::UHDSize();
 
 	} else if (res == "1080p") {
@@ -202,7 +340,8 @@ int main(int argc, char **argv)
 	} else {
 		ROS_ERROR("Invalid resolution %s. Defaulting to VGA\n", res.c_str());
 		cfg.pSize = CameraSizes::stereoVGASize();
-	}
+	}*/
+	cfg.pSize = CameraSizes::stereoVGASize();
 
 	cfg.fps = camera_fps;
 	cfg.exposureValue = exposure;
