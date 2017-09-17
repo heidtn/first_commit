@@ -159,6 +159,8 @@ std::string type2str(int type) {
 void findCorners(cv::Mat &img) {
 	cv::Mat hsv, mask, dilated, diltaed_thinned, cleaned_thin, corners, big_corners, corner_thresh;
 
+	cv::imwrite("/home/linaro/temp_ims/reg.jpg", img);
+
 	std::cout << "convert and threshold" << std::endl;
 	// Convert to HSV and threshold
 	cv::cvtColor(img, hsv, CV_BGR2HSV);
@@ -176,13 +178,16 @@ void findCorners(cv::Mat &img) {
 
 	std::cout << "thin image" << std::endl;
 
-	thinning(dilated);
+	//thinning(dilated);
+	cv::Mat newkernel(cv::Size(9, 9), CV_8UC1, cv::Scalar(0));
+	cv::dilate(dilated, dilated, newkernel, cv::Point(-1, -1), 2, 1, 1);
+
 	cv::imwrite("/home/linaro/temp_ims/thinned.jpg", dilated);
 
 	std::cout << "dilate" << std::endl;
 
 	cv::dilate(dilated, diltaed_thinned, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
-	filterNoise(diltaed_thinned, 100);
+	filterNoise(diltaed_thinned, 200);
 	cv::imwrite("/home/linaro/temp_ims/diltaed_thinned.jpg", diltaed_thinned);
 
 	std::cout << "Harris corners" << std::endl;
@@ -197,7 +202,7 @@ void findCorners(cv::Mat &img) {
 	std::cout << "minmax " << min << " " << max << std::endl;
 
 	// TODO(heidt) fix bad corners)
-	threshold(big_corners, corner_thresh, 0.5*max, 255, CV_THRESH_BINARY);
+	threshold(big_corners, corner_thresh, 0.5*cv::min(max, CORNERINESS), 255, CV_THRESH_BINARY);
 	corner_thresh.convertTo(corner_thresh, CV_8UC1);
 
 	cv::imwrite("/home/linaro/temp_ims/corners.jpg", corner_thresh);
