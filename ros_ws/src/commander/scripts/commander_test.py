@@ -5,6 +5,7 @@ from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped, Pose
 from std_msgs.msg import String
 
+
 from commander.srv import CommandState
 
 cur_pose = None
@@ -71,7 +72,7 @@ if __name__ == "__main__":
         if command == "f":
             try:
                 takeoff = rospy.ServiceProxy('cmd_state', CommandState)
-                resp = takeoff("Followpath", poselist)
+                resp = takeoff("Followpath")
                 rospy.loginfo("Completed Takeoff request with response: {}".format(resp))
             except rospy.ServiceException, e:
                 print "Service call failed: %s"%e

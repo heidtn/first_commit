@@ -3,9 +3,10 @@ import datetime
 import rospy
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 from commander.srv import CommandStateResponse, CommandState
 from std_msgs.msg import Empty
+from std_srvs.srv import Trigger
 
 import numpy as np
 import sys
@@ -25,8 +26,11 @@ class Controller:
     """
     def __init__(self):
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
+        self.play_pub = rospy.Publisher('/fc/path/play', Float64, queue_size=10)
         self.prop_start_pub = rospy.Publisher('/start_props', Empty, queue_size=10)
         self.prop_stop_pub = rospy.Publisher('/stop_props', Empty, queue_size=10)
+
+        rospy.Subscriber("/fc/cmd/pose", Twist, self.pathgen_pose)
         rospy.Subscriber("/pose", PoseStamped, self.pose_callback)
 
         self.base_pose = None
@@ -123,7 +127,7 @@ class Controller:
         rospy.loginfo(text)
         self.logfile.write(text + '\n')
 
-    def set_state(self, command, path=None):
+    def set_state(self, command):
         #TODO(heidt) add a lock here!!!
         self.log("Attempting to set state to: {}".format(command))
         if command == "Takeoff":
@@ -132,14 +136,16 @@ class Controller:
                 self.mode = "Takingoff"
         elif command == "Followpath":
             if self.mode in ["Hovering", "Followingpath"]:
-                self.path_poses = []
-                for pose_stamped in path:
-                    pose = pose_stamped.pose
-                    yaw = q_to_yaw(pose.orientation)
-                    p = np.array([pose.position.x, pose.position.y, pose.position.z, yaw])
-                    self.path_poses.append(p)
+                buildpath = rospy.ServiceProxy('fc/pathgen/build', Trigger)
+                resp = buildpath()
+                if resp.success == True:
+                    # TODO(heidt) what is a good speed for this?
+                    # TODO(heidt) should we continaully publish this?
+                    self.play_pub.publish(Float64(0.25))
                     self.mode = "Followingpath"
-                self.goal_pose = self.path_poses.pop(0)
+                else:
+                    self.log("Bad response from pathgen!")
+
         elif command == "Hover":
             if self.mode in ["Followingpath"]:
                 self.goal_pose = np.array([0., 0., HOVER_HEIGHT, 0.])
@@ -148,6 +154,12 @@ class Controller:
             if self.mode in ["Followingpath", "Hovering"]:
                 self.goal_pose = np.array([0., 0., 0., 0.])
                 self.mode = "Landing"
+
+    def pathgen_pose(self, msg):
+        if self.mode == "Followingpath":
+            lin = msg.linear
+            pose = np.array([lin.x, lin.y, lin.z, msg.angular.z])
+            self.goal_pose = pose
 
     def set_goal_pose(self, pose):
         self.goal_pose = np.array(pose)
@@ -184,7 +196,6 @@ class Commander:
 
     def cmd_state(self, msg):
         cmd = msg.cmd
-        poses = msg.poses
         if self.controller.mode == "Idle":
             if cmd == "Takeoff":
                 self.controller.set_state(cmd)
@@ -194,12 +205,11 @@ class Commander:
             if cmd in "Land":
                 self.controller.set_state(cmd)
             if cmd == "Followpath":
-                self.controller.set_state(cmd, path=poses)
+                self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         elif self.controller.mode == "Followingpath":
             if cmd in ["Hover", "Land"]:
-                print "got poses: ", poses
                 self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)

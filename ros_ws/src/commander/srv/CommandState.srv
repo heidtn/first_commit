@@ -1,5 +1,4 @@
 string cmd
-geometry_msgs/PoseStamped[] poses
 ---
 string state
 bool success
