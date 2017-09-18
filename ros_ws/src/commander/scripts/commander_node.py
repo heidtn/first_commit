@@ -16,6 +16,7 @@ import threading
 ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
 
+FLIGHT_ENABLED = False
 
 def q_to_yaw(q):
     return np.arctan2(2.0*(q.x*q.y + q.w*q.z), 1-2*(q.y*q.y + q.z*q.z))
@@ -25,11 +26,13 @@ class Controller:
     Low level state control.  Simply controls velocity for moving to the next point.
     """
     def __init__(self):
+        # ROS publishers
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.play_pub = rospy.Publisher('/fc/path/play', Float64, queue_size=10)
         self.prop_start_pub = rospy.Publisher('/start_props', Empty, queue_size=10)
         self.prop_stop_pub = rospy.Publisher('/stop_props', Empty, queue_size=10)
 
+        # ROS sucscribers
         rospy.Subscriber("/fc/cmd/pose", Twist, self.pathgen_pose)
         rospy.Subscriber("/pose", PoseStamped, self.pose_callback)
 
@@ -49,6 +52,10 @@ class Controller:
     def pose_callback(self, msg):
         q = msg.pose.orientation
         yaw = q_to_yaw(q)
+
+        # Need to set first base pose depending on where we start this program
+        # TODO(heidt) if we have the global landmark matcher, we need to get rid
+        # of this base_pose or a landmark match will wreck the system
         if self.base_pose is None:
             self.base_pose = np.array([msg.pose.position.x,
                                        msg.pose.position.y,
@@ -90,17 +97,18 @@ class Controller:
         goal_vel.angular.z = y[3]
 
         self.iter_loop += 1
-        if self.iter_loop % 60 == 0:
+        if self.iter_loop % 150 == 0:
             self.log("Reading: {}".format(self.iter_loop // 60))
-            self.log(measured_pose)
-            self.log(self.cur_pose)
-            self.log(self.goal_pose)
+            # self.log(measured_pose)
+            self.log("current pose: " + str(self.cur_pose))
+            self.log("goal pose: " + str(self.goal_pose))
 
         y = np.clip(y, -.3, .3)
         y[3] = -y[3]
 
         if self.mode == "Takingoff":
-            self.prop_start_pub.publish(Empty())
+            if FLIGHT_ENABLED:
+                self.prop_start_pub.publish(Empty())
             goal_vel.linear.z = 0.4
             if abs(self.cur_pose[2] - HOVER_HEIGHT) < ARRIVAL_DISTANCE:
                 self.mode = "Hovering"
@@ -125,7 +133,7 @@ class Controller:
 
     def log(self, text):
         rospy.loginfo(text)
-        self.logfile.write(text + '\n')
+        self.logfile.write(str(text) + '\n')
 
     def set_state(self, command):
         #TODO(heidt) add a lock here!!!
@@ -140,7 +148,7 @@ class Controller:
                 resp = buildpath()
                 if resp.success == True:
                     # TODO(heidt) what is a good speed for this?
-                    # TODO(heidt) should we continaully publish this?
+                    # TODO(heidt) should we continually publish this?
                     self.play_pub.publish(Float64(0.25))
                     self.mode = "Followingpath"
                 else:

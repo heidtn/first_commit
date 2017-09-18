@@ -41,14 +41,14 @@ if __name__ == "__main__":
         if command == "l":
             try:
                 land = rospy.ServiceProxy('cmd_state', CommandState)
-                resp = land("Land", None)
+                resp = land("Land")
                 rospy.loginfo("Completed land request with response: {}".format(resp))
             except rospy.ServiceException, e:
                 print "Service call failed: %s"%e
         if command == "t":
             try:
                 takeoff = rospy.ServiceProxy('cmd_state', CommandState)
-                resp = takeoff("Takeoff", None)
+                resp = takeoff("Takeoff")
                 rospy.loginfo("Completed Takeoff request with response: {}".format(resp))
             except rospy.ServiceException, e:
                 print "Service call failed: %s"%e
