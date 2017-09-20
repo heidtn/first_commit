@@ -24,9 +24,14 @@
 #include <sensor_msgs/Image.h>
 #include <image_transport/image_transport.h>
 
+#include "geometry_msgs/PoseArray.h"
+#include "geometry_msgs/PoseStamped.h"
+
 #include "SnapCam.h"
 
-image_transport::Publisher image_pub;
+ros::Publisher corner_pub;
+geometry_msgs::PoseArray poseArray;
+
 
 // TODO(heidt) we can probably get these from ROS
 double F_X = 279.60814589461154;
@@ -130,38 +135,9 @@ void thinning(cv::Mat& im)
     im *= 255;
 }
 
-
-
-std::string type2str(int type) {
-  std::string r;
-
-  uchar depth = type & CV_MAT_DEPTH_MASK;
-  uchar chans = 1 + (type >> CV_CN_SHIFT);
-
-  switch ( depth ) {
-    case CV_8U:  r = "8U"; break;
-    case CV_8S:  r = "8S"; break;
-    case CV_16U: r = "16U"; break;
-    case CV_16S: r = "16S"; break;
-    case CV_32S: r = "32S"; break;
-    case CV_32F: r = "32F"; break;
-    case CV_64F: r = "64F"; break;
-    default:     r = "User"; break;
-  }
-
-  r += "C";
-  r += (chans+'0');
-
-  return r;
-}
-
-
 void findCorners(cv::Mat &img) {
 	cv::Mat hsv, mask, dilated, diltaed_thinned, cleaned_thin, corners, big_corners, corner_thresh;
 
-	cv::imwrite("/home/linaro/temp_ims/reg.jpg", img);
-
-	std::cout << "convert and threshold" << std::endl;
 	// Convert to HSV and threshold
 	cv::cvtColor(img, hsv, CV_BGR2HSV);
 	cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
@@ -170,42 +146,25 @@ void findCorners(cv::Mat &img) {
 	// TODO(heidt) the morphology method might be improved
 	cv::dilate(mask, dilated, cv::Mat());
 
-	std::cout << "filter noise" << std::endl;
-
 	filterNoise(dilated);
-
-	cv::imwrite("/home/linaro/temp_ims/dilated.jpg", dilated);
-
-	std::cout << "thin image" << std::endl;
 
 	//thinning(dilated);
 	cv::Mat newkernel(cv::Size(9, 9), CV_8UC1, cv::Scalar(0));
 	cv::dilate(dilated, dilated, newkernel, cv::Point(-1, -1), 2, 1, 1);
 
-	cv::imwrite("/home/linaro/temp_ims/thinned.jpg", dilated);
-
-	std::cout << "dilate" << std::endl;
-
 	cv::dilate(dilated, diltaed_thinned, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
 	filterNoise(diltaed_thinned, 200);
-	cv::imwrite("/home/linaro/temp_ims/diltaed_thinned.jpg", diltaed_thinned);
-
-	std::cout << "Harris corners" << std::endl;
 
 	cornerHarris(diltaed_thinned, corners, 16, 1, 0.04);
-	cv::imwrite("/home/linaro/temp_ims/corners.jpg", corners);
 
 	cv::dilate(corners, big_corners, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
 
 	double min, max;
 	cv::minMaxLoc(big_corners, &min, &max);
-	std::cout << "minmax " << min << " " << max << std::endl;
 
-	// TODO(heidt) fix bad corners)
+	// TODO(heidt) fix double corners)
 	threshold(big_corners, corner_thresh, 0.5*cv::min(max, CORNERINESS), 255, CV_THRESH_BINARY);
 	corner_thresh.convertTo(corner_thresh, CV_8UC1);
-
-	cv::imwrite("/home/linaro/temp_ims/corners.jpg", corner_thresh);
 
 	std::vector<std::vector<cv::Point> > contours;
 	std::vector<cv::Vec4i> hierarchy;
@@ -218,12 +177,15 @@ void findCorners(cv::Mat &img) {
 	}
 
 	///  Get the mass centers:
+	poseArray.poses.clear();
+	poseArray.header.stamp = ros::Time::now();
+	poseArray.header.frame_id = "/camera";
+
 	std::vector<cv::Point2f> mc( contours.size() );
 	for( int i = 0; i < contours.size(); i++ ) { 
 		mc[i] = cv::Point2f( mu[i].m10/mu[i].m00 , mu[i].m01/mu[i].m00 ); 
-	}
 
-	std::cout << "Found " << mc.size() << " courners!" << std::endl;
+	}
 
 }
 
@@ -234,28 +196,14 @@ void imageCallback(const cv::Mat &img_ret, uint64_t time_stamp) {
 	rot90(img, 1);
 	std::cout << "finding corners" << std::endl;
 	findCorners(img);
-/*	cv_bridge::CvImage cvi;
-	cvi.header.stamp = ros::Time::now();
-	cvi.header.frame_id = "image";
-	cvi.image = img;
-
-	if (img.channels() == 1) { // optical flow
-		cvi.encoding = "mono8";
-
-	} else { // highres
-		cvi.encoding = "bgr8";
-	}
-
-	sensor_msgs::Image im;
-	cvi.toImageMsg(im);
-	image_pub.publish(im);*/
 }
 
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "snap_cam_publisher");
 	ros::NodeHandle nh("~");
-	image_transport::ImageTransport it(nh);
+
+	corner_pub = n.advertise<geometry_msgs::PoseArray>("/fc/vision/corners", 1000);
 
 	std::string topic_name;
 
@@ -263,8 +211,6 @@ int main(int argc, char **argv)
 		topic_name = "image";
 		ROS_WARN("No topic name parameter provided. Defaulting to: %s.", topic_name.c_str());
 	}
-
-	image_pub = it.advertise(topic_name.c_str(), 1);
 
 	std::string res;
 
@@ -310,42 +256,8 @@ int main(int argc, char **argv)
 
 	CamConfig cfg;
 
-	if (camera_type == "highres") {
-		cfg.func = CAM_FUNC_HIRES;
+	cfg.func = CAM_FUNC_HIRES;
 
-	} else if (camera_type == "optflow") {
-		cfg.func = CAM_FUNC_OPTIC_FLOW;
-
-	} else {
-		ROS_ERROR("Invalid camera type %s. Defaulting to highres.", camera_type.c_str());
-		cfg.func = CAM_FUNC_HIRES;
-	}
-
-/*	if (res == "4k") {
-		cfg.pSize = CameraSizes::UHDSize();
-
-	} else if (res == "1080p") {
-		cfg.pSize = CameraSizes::FHDSize();
-
-	} else if (res == "720p") {
-		cfg.pSize = CameraSizes::HDSize();
-
-	} else if (res == "VGA") {
-		cfg.pSize = CameraSizes::VGASize();
-
-	} else if (res == "QVGA") {
-		cfg.pSize = CameraSizes::QVGASize();
-
-	} else if (res == "stereoVGA") {
-		cfg.pSize = CameraSizes::stereoVGASize();
-
-	} else if (res == "stereoQVGA") {
-		cfg.pSize = CameraSizes::stereoQVGASize();
-
-	} else {
-		ROS_ERROR("Invalid resolution %s. Defaulting to VGA\n", res.c_str());
-		cfg.pSize = CameraSizes::stereoVGASize();
-	}*/
 	cfg.pSize = CameraSizes::stereoVGASize();
 
 	cfg.fps = camera_fps;
