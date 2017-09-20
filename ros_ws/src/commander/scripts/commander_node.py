@@ -17,6 +17,7 @@ import threading
 
 ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
+PLAY_SPEED = 0.25
 
 FLIGHT_ENABLED = True
 
@@ -45,7 +46,7 @@ class Controller:
         self.cur_pose = np.array([0., 0., 0., 0.])
 
         # Ziegler nichols, assume 1 for Ku, 2 for Tu
-        self.Kp = np.array([.6, .6, .6, .8])
+        self.Kp = np.array([1., 1., 1., 1.2])
         self.Ki = np.array([.6, .6, .6, .8])
         self.Kd = np.array([.15, .15, .15, .2])
         self.previous_error = 0
@@ -137,7 +138,7 @@ class Controller:
         if self.mode == "Takingoff":
             if FLIGHT_ENABLED:
                 self.prop_start_pub.publish(Empty())
-            goal_vel.linear.z = 0.4
+            goal_vel.linear.z = 0.6
             if abs(self.cur_pose[2] - HOVER_HEIGHT) < ARRIVAL_DISTANCE:
                 self.mode = "Hovering"
                 self.log("Reached hover height!")
@@ -176,7 +177,7 @@ class Controller:
                     self.log("Sucessfully built path")
                     # TODO(heidt) what is a good speed for this?
                     # TODO(heidt) should we continually publish this?
-                    self.play_pub.publish(Float64(.25))
+                    self.play_pub.publish(Float64(PLAY_SPEED))
                     self.mode = "Followingpath"
                 else:
                     self.log("Bad response from pathgen!")
