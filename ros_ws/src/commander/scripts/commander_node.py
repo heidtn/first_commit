@@ -18,7 +18,7 @@ import threading
 ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
 
-FLIGHT_ENABLED = False
+FLIGHT_ENABLED = True
 
 def q_to_yaw(q):
     return np.arctan2(2.0*(q.x*q.y + q.w*q.z), 1-2*(q.y*q.y + q.z*q.z))
@@ -56,6 +56,7 @@ class Controller:
 
         self.endtime = 99999999
         self.currenttime = 0
+	self.is_path_loaded = False
         self.iter_loop = 0
         self.mode = "Idle"  # Idle, Takeoff, Land, Hover, Followpath
         self.logfile = open(str(datetime.datetime.now().isoformat()) + '.log', 'w+')
@@ -64,6 +65,9 @@ class Controller:
         self.logfile.close()
 
     def pose_callback(self, msg):
+        if msg.header.frame_id != "/odom":
+            return
+
         q = msg.pose.orientation
         yaw = q_to_yaw(q)
 
@@ -83,7 +87,7 @@ class Controller:
                                   msg.pose.position.y,
                                   msg.pose.position.z,
                                   yaw])
-        self.cur_pose = measured_pose - self.base_pose
+        self.cur_pose = measured_pose   # - self.base_pose
 
         # Proportional controller
         E = self.goal_pose - self.cur_pose
@@ -100,7 +104,8 @@ class Controller:
         self.last_time = current_time
 
         self.integration += E*delta_t
-        d = (E - self.previous_error)/delta_t
+        self.integration = np.clip(self.integration, -self.integration_max, self.integration_max)
+        d = (E - self.previous_error) / delta_t
         self.previous_error = E
 
         y = E*self.Kp
@@ -137,7 +142,7 @@ class Controller:
                 self.mode = "Hovering"
                 self.log("Reached hover height!")
         elif self.mode == "Landing":
-            goal_vel.linear.z = -0.4
+            goal_vel.linear.z = -0.2
             if abs(self.cur_pose[2] - 0) < ARRIVAL_DISTANCE:
                 self.mode = "Idle"
                 self.log("Landed!")
@@ -145,7 +150,7 @@ class Controller:
         elif self.mode == "Followingpath":
             if np.linalg.norm(self.cur_pose - self.goal_pose) < ARRIVAL_DISTANCE:
                 self.log("Reached point: {}".format(self.goal_pose))
-                if self.currenttime == self.endtime
+                if self.currenttime == self.endtime and self.is_path_loaded:
                     self.mode = "Hovering"
                     self.log("Done following path, hovering...")
 
@@ -165,12 +170,13 @@ class Controller:
                 self.mode = "Takingoff"
         elif command == "Followpath":
             if self.mode in ["Hovering", "Followingpath"]:
-                buildpath = rospy.ServiceProxy('fc/pathgen/build', Trigger)
+                buildpath = rospy.ServiceProxy('fc/path/build', Trigger)
                 resp = buildpath()
                 if resp.success == True:
+                    self.log("Sucessfully built path")
                     # TODO(heidt) what is a good speed for this?
                     # TODO(heidt) should we continually publish this?
-                    self.play_pub.publish(Float64(0.25))
+                    self.play_pub.publish(Float64(.25))
                     self.mode = "Followingpath"
                 else:
                     self.log("Bad response from pathgen!")
@@ -193,6 +199,7 @@ class Controller:
     def pathgen_status(self, msg):
         self.endtime = msg.endtime
         self.currenttime = msg.currenttime
+        self.is_path_loaded = msg.pathloaded
 
     def set_goal_pose(self, pose):
         self.goal_pose = np.array(pose)
