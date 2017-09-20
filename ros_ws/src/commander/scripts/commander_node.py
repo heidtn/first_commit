@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 import datetime
+import time
 import rospy
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String, Float64
 from commander.srv import CommandStateResponse, CommandState
+from pathgen.msg import PathGenStatus
 from std_msgs.msg import Empty
 from std_srvs.srv import Trigger
 
@@ -35,13 +37,25 @@ class Controller:
         # ROS sucscribers
         rospy.Subscriber("/fc/cmd/pose", Twist, self.pathgen_pose)
         rospy.Subscriber("/pose", PoseStamped, self.pose_callback)
+        rospy.Subscriber("/fc/path/status", PathGenStatus, self.pathgen_status)
 
         self.base_pose = None
         self.goal_pose = np.array([0., 0., 0., 0.])
         self.path_poses = []
         self.cur_pose = np.array([0., 0., 0., 0.])
+
+        # Ziegler nichols, assume 1 for Ku, 2 for Tu
         self.Kp = np.array([.6, .6, .6, .8])
-        # self.Kp = np.array([1., 1., 1., 1.])
+        self.Ki = np.array([.6, .6, .6, .8])
+        self.Kd = np.array([.15, .15, .15, .2])
+        self.previous_error = 0
+        self.last_time = time.time()
+        self.integration = np.array([0, 0, 0, 0])
+        self.integration_max = .5
+
+
+        self.endtime = 99999999
+        self.currenttime = 0
         self.iter_loop = 0
         self.mode = "Idle"  # Idle, Takeoff, Land, Hover, Followpath
         self.logfile = open(str(datetime.datetime.now().isoformat()) + '.log', 'w+')
@@ -79,6 +93,15 @@ class Controller:
         if E[3] < 0:
             E[3] += np.pi*2.
         E[3] -= np.pi
+
+        # PID calculation
+        current_time = time.time()
+        delta_t = current_time - self.last_time
+        self.last_time = current_time
+
+        self.integration += E*delta_t
+        d = (E - self.previous_error)/delta_t
+        self.previous_error = E
 
         y = E*self.Kp
 
@@ -122,9 +145,7 @@ class Controller:
         elif self.mode == "Followingpath":
             if np.linalg.norm(self.cur_pose - self.goal_pose) < ARRIVAL_DISTANCE:
                 self.log("Reached point: {}".format(self.goal_pose))
-                if len(self.path_poses) > 0:
-                    self.goal_pose = self.path_poses.pop(0)
-                else:
+                if self.currenttime == self.endtime
                     self.mode = "Hovering"
                     self.log("Done following path, hovering...")
 
@@ -168,6 +189,10 @@ class Controller:
             lin = msg.linear
             pose = np.array([lin.x, lin.y, lin.z, msg.angular.z])
             self.goal_pose = pose
+
+    def pathgen_status(self, msg):
+        self.endtime = msg.endtime
+        self.currenttime = msg.currenttime
 
     def set_goal_pose(self, pose):
         self.goal_pose = np.array(pose)
