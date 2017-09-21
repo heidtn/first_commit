@@ -15,6 +15,9 @@ import sys
 import copy
 import threading
 
+LAND_THRESH = 0.5
+LAND_SPEED_THRESH = 0.05
+
 ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
 PLAY_SPEED = 0.25
@@ -46,9 +49,9 @@ class Controller:
         self.cur_pose = np.array([0., 0., 0., 0.])
 
         # Ziegler nichols, assume 1 for Ku, 2 for Tu
-        self.Kp = np.array([1., 1., 1., 1.2])
+        self.Kp = np.array([1.2, 1.2, 1.2, 1.8])
         self.Ki = np.array([.6, .6, .6, .8])
-        self.Kd = np.array([.15, .15, .15, .2])
+        self.Kd = np.array([.07, .07, .07, .1])
         self.previous_error = 0
         self.last_time = time.time()
         self.integration = np.array([0, 0, 0, 0])
@@ -109,7 +112,7 @@ class Controller:
         d = (E - self.previous_error) / delta_t
         self.previous_error = E
 
-        y = E*self.Kp
+        y = E*self.Kp + d*self.Kd
 
         goal_vel = Twist()
 
@@ -139,12 +142,12 @@ class Controller:
             if FLIGHT_ENABLED:
                 self.prop_start_pub.publish(Empty())
             goal_vel.linear.z = 0.6
-            if abs(self.cur_pose[2] - HOVER_HEIGHT) < ARRIVAL_DISTANCE:
+            if self.cur_pose[2] > HOVER_HEIGHT:
                 self.mode = "Hovering"
                 self.log("Reached hover height!")
         elif self.mode == "Landing":
             goal_vel.linear.z = -0.2
-            if abs(self.cur_pose[2] - 0) < ARRIVAL_DISTANCE:
+            if self.cur_pose[2] < ARRIVAL_DISTANCE or (self.cur_pose[2] < LAND_THRESH and d[2] < LAND_SPEED_THRESH):
                 self.mode = "Idle"
                 self.log("Landed!")
                 self.prop_stop_pub.publish(Empty())
@@ -167,7 +170,7 @@ class Controller:
         self.log("Attempting to set state to: {}".format(command))
         if command == "Takeoff":
             if self.mode == "Idle":
-                self.goal_pose = np.array([0., 0., HOVER_HEIGHT, 0.])
+                self.goal_pose = np.array([self.cur_pose[0], self.cur_pose[1], HOVER_HEIGHT, 0.])
                 self.mode = "Takingoff"
         elif command == "Followpath":
             if self.mode in ["Hovering", "Followingpath"]:
@@ -184,11 +187,11 @@ class Controller:
 
         elif command == "Hover":
             if self.mode in ["Followingpath"]:
-                self.goal_pose = np.array([0., 0., HOVER_HEIGHT, 0.])
+                self.goal_pose = np.array([self.cur_pose[0], self.cur_pose[1], HOVER_HEIGHT, 0.])
                 self.mode = "Hovering"
         elif command == "Land":
             if self.mode in ["Followingpath", "Hovering"]:
-                self.goal_pose = np.array([0., 0., 0., 0.])
+                self.goal_pose = np.array([self.cur_pose[0], self.cur_pose[1], 0., 0.])
                 self.mode = "Landing"
 
     def pathgen_pose(self, msg):
