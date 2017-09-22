@@ -20,7 +20,7 @@ LAND_SPEED_THRESH = 0.05
 
 ARRIVAL_DISTANCE = 0.15
 HOVER_HEIGHT = 1.0
-PLAY_SPEED = 0.25
+PLAY_SPEED = 0.5
 
 FLIGHT_ENABLED = True
 
@@ -97,7 +97,7 @@ class Controller:
         E = self.goal_pose - self.cur_pose
 
         # Bound the rotational error
-        E[3] = (E[3] + np.pi) % 2*np.pi
+        E[3] = (E[3] + np.pi) % 2.*np.pi
         if E[3] < 0:
             E[3] += np.pi*2.
         E[3] -= np.pi
