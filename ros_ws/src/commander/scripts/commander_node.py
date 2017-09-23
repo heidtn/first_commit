@@ -148,6 +148,9 @@ class Controller:
                 if self.currenttime == self.endtime
                     self.mode = "Hovering"
                     self.log("Done following path, hovering...")
+        elif self.mode == "Kill":
+            self.prop_stop_pub.publish(Empty())
+            self.mode = "Idle"
 
         if self.mode != "Idle":
             self.pub.publish(goal_vel)
@@ -183,6 +186,8 @@ class Controller:
             if self.mode in ["Followingpath", "Hovering"]:
                 self.goal_pose = np.array([0., 0., 0., 0.])
                 self.mode = "Landing"
+        elif command == "Kill":
+            self.mode = "Kill"
 
     def pathgen_pose(self, msg):
         if self.mode == "Followingpath":
@@ -230,19 +235,17 @@ class Commander:
     def cmd_state(self, msg):
         cmd = msg.cmd
         if self.controller.mode == "Idle":
-            if cmd == "Takeoff":
+            if cmd == ["Takeoff", "Followpath"]:
                 self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         elif self.controller.mode == "Hovering":
-            if cmd in "Land":
-                self.controller.set_state(cmd)
-            if cmd == "Followpath":
+            if cmd in ["Land", "Kill", "Followpath"]:
                 self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)
         elif self.controller.mode == "Followingpath":
-            if cmd in ["Hover", "Land"]:
+            if cmd in ["Hover", "Land", "Kill"]:
                 self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)

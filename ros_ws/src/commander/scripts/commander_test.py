@@ -16,6 +16,7 @@ def show_help():
           "Press r to start record (ctrl+c to stop)\n" \
           "Press f to playback recorded path\n" \
           "Press z to get zero position\n" \
+          "Press k to DIEEEEEE\n" \
           "Press h for this menu\n"
 
 def pose_callback(msg):
@@ -80,3 +81,8 @@ if __name__ == "__main__":
         if command == "z":
             zero_pose = cur_pose
             rospy.loginfo("Got zero pose: {}".format(zero_pose))
+
+        if command == "k":
+            kill = rospy.ServiceProxy('cmd_state', CommandState)
+            resp = kill("Kill")
+            rospy.loginfo("Completed Takeoff request with response: {}".format(resp))
