@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <chrono>
 #include <cv.h>
 #include <errno.h>
 #include <highgui.h>
@@ -125,10 +126,21 @@ void thinning(cv::Mat &im) {
   im *= 255;
 }
 
+
+//using namespace std::chrono;
+
 void findCorners(cv::Mat &img) {
   cv::Mat hsv, mask, dilated, diltaed_thinned, cleaned_thin, corners,
       big_corners, corner_thresh;
 
+/*  milliseconds ms = duration_cast< milliseconds >(
+      system_clock::now().time_since_epoch()
+  );
+
+  std::string ms_str = std::to_string(ms.count());
+
+  cv::imwrite("/home/linaro/temp_ims/" + ms_str + ".jpg", img);
+*/
   // Convert to HSV and threshold
   cv::cvtColor(img, hsv, CV_BGR2HSV);
   cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
@@ -260,7 +272,7 @@ int main(int argc, char **argv) {
 
   cfg.func = CAM_FUNC_HIRES;
 
-  cfg.pSize = CameraSizes::stereoVGASize();
+  cfg.pSize = CameraSizes::VGASize();
 
   cfg.fps = camera_fps;
   cfg.exposureValue = exposure;
