@@ -27,18 +27,22 @@
 
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/PoseStamped.h"
+#include "std_msgs/String.h"
 
 #include "SnapCam.h"
 
 ros::Publisher corner_pub;
+ros::Publisher moving_gate_pub;
 geometry_msgs::PoseArray poseArray;
 
 // TODO(heidt) we can probably get these from ROS
-double F_X = 279.60814589461154;
-double F_Y = 280.1693782018111;
-double C_X = 222.49106441516423;
-double C_Y = 317.7691476613439;
-double CORNERINESS = .04;
+const double F_X = 279.60814589461154;
+const double F_Y = 280.1693782018111;
+const double C_X = 222.49106441516423;
+const double C_Y = 317.7691476613439;
+const double CORNERINESS = .04;
+const bool DETECT_MOVING_GATE = false;
+
 
 void rot90(cv::Mat &matImage, int rotflag) {
   // 1=CW, 2=CCW, 3=180
@@ -199,6 +203,29 @@ void findCorners(cv::Mat &img) {
   corner_pub.publish(poseArray);
 }
 
+void findMovingGate(cv::Mat &img) {
+  cv::Mat hsv, mask;
+  // Convert to HSV and threshold
+  cv::cvtColor(img, hsv, CV_BGR2HSV);
+  cv::inRange(hsv, cv::Scalar(60, 130, 70), cv::Scalar(80, 190, 140), mask);
+
+  int count = 0;
+  for(int i = img.width/2 - img.width/8; i < img.width/2 + img.width/8; i++) {
+    for(int j = img.height/2; j < img.height; j ++) {
+      if(img.at(i, j) == 255) {
+        count++;
+      }
+    }
+  }
+
+  std::cout << "Pixel count: " << count << std::endl;
+
+  std::string count_str = std::string{count};
+  std_msgs::String msg;
+  msg.data = count_str;
+  moving_gate_pub.publish(msg);
+}
+
 void imageCallback(const cv::Mat &img_ret, uint64_t time_stamp) {
   // convert OpenCV image to ROS message
   cv::Mat img = img_ret.clone();
@@ -206,6 +233,10 @@ void imageCallback(const cv::Mat &img_ret, uint64_t time_stamp) {
   rot90(img, 1);
   std::cout << "finding corners" << std::endl;
   findCorners(img);
+
+  if(DETECT_MOVING_GATE) {
+    findMovingGate();
+  }
 }
 
 int main(int argc, char **argv) {
@@ -214,6 +245,8 @@ int main(int argc, char **argv) {
 
   corner_pub =
       nh.advertise<geometry_msgs::PoseArray>("/fc/vision/corners", 1000);
+
+  moving_gate_pub = nh.advertise<std_msgs::String>("/fc/vision/moving_gate", 10);
 
   std::string topic_name;
 
