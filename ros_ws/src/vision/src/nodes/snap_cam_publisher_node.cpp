@@ -42,6 +42,7 @@ const double C_X = 222.49106441516423;
 const double C_Y = 317.7691476613439;
 const double CORNERINESS = .04;
 const bool DETECT_MOVING_GATE = false;
+bool save_images = false;
 
 
 void rot90(cv::Mat &matImage, int rotflag) {
@@ -131,20 +132,16 @@ void thinning(cv::Mat &im) {
 }
 
 
-//using namespace std::chrono;
 
 void findCorners(cv::Mat &img) {
   cv::Mat hsv, mask, dilated, diltaed_thinned, cleaned_thin, corners,
       big_corners, corner_thresh;
 
-/*  milliseconds ms = duration_cast< milliseconds >(
-      system_clock::now().time_since_epoch()
-  );
+  if(save_images) {
+    std::string ms_str = std::to_string(ros::Time::now());
+    cv::imwrite("/home/linaro/temp_ims/" + ms_str + ".jpg", img);
+  }
 
-  std::string ms_str = std::to_string(ms.count());
-
-  cv::imwrite("/home/linaro/temp_ims/" + ms_str + ".jpg", img);
-*/
   // Convert to HSV and threshold
   cv::cvtColor(img, hsv, CV_BGR2HSV);
   cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
@@ -299,6 +296,14 @@ int main(int argc, char **argv) {
   if (!nh.getParam("auto_exposure", auto_exposure)) {
     auto_exposure = false;
     ROS_WARN("Defaulting to no auto exposure");
+  }
+
+  if (!nh.getParam("save_images", save_images)) {
+    save_images = false;
+    ROS_WARN("Save images disabled");
+  } else {
+    save_images = true;
+    ROS_WARN("Save images enabled");
   }
 
   CamConfig cfg;
