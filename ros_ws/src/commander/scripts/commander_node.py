@@ -63,10 +63,10 @@ class Controller:
 	self.is_path_loaded = False
         self.iter_loop = 0
         self.mode = "Idle"  # Idle, Takeoff, Land, Hover, Followpath
-        self.logfile = open(str(datetime.datetime.now().isoformat()) + '.log', 'w+')
+        #self.logfile = open(str(datetime.datetime.now().isoformat()) + '.log', 'w+')
 
     def __del__(self):
-        self.logfile.close()
+        pass #self.logfile.close()
 
     def pose_callback(self, msg):
         if msg.header.frame_id != "/odom":
@@ -97,7 +97,7 @@ class Controller:
         E = self.goal_pose - self.cur_pose
 
         # Bound the rotational error
-        E[3] = (E[3] + np.pi) % 2.*np.pi
+        E[3] = np.mod((E[3] + np.pi), 2.*np.pi)
         if E[3] < 0:
             E[3] += np.pi*2.
         E[3] -= np.pi
@@ -166,7 +166,7 @@ class Controller:
 
     def log(self, text):
         rospy.loginfo(text)
-        self.logfile.write(str(text) + '\n')
+        #self.logfile.write(str(text) + '\n')
 
     def set_state(self, command):
         #TODO(heidt) add a lock here!!!
@@ -246,7 +246,7 @@ class Commander:
     def cmd_state(self, msg):
         cmd = msg.cmd
         if self.controller.mode == "Idle":
-            if cmd == ["Takeoff", "Followpath"]:
+            if cmd in ["Takeoff", "Followpath"]:
                 self.controller.set_state(cmd)
             else:
                 self._bad_state_log(self.controller.mode, cmd)

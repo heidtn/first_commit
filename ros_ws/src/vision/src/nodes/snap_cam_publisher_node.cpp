@@ -75,7 +75,6 @@ void filterNoise(cv::Mat &img, int min_area = 200) {
     }
   }
   cv::drawContours(result, good_contours, -1, cv::Scalar(255), CV_FILLED, 8);
-  std::cout << "adning" << result.size() << " " << img.size() << std::endl;
 
   img &= result;
 }
@@ -207,9 +206,9 @@ void findMovingGate(cv::Mat &img) {
   cv::inRange(hsv, cv::Scalar(60, 130, 70), cv::Scalar(80, 190, 140), mask);
 
   int count = 0;
-  for(int i = img.width/2 - img.width/8; i < img.width/2 + img.width/8; i++) {
-    for(int j = img.height/2; j < img.height; j ++) {
-      if(img.at(i, j) == 255) {
+  for(int i = img.cols/2 - img.cols/8; i < img.cols/2 + img.cols/8; i++) {
+    for(int j = img.rows/2; j < img.rows; j ++) {
+      if(hsv.at<char>(i, j) == 255) {
         count++;
       }
     }
@@ -217,7 +216,7 @@ void findMovingGate(cv::Mat &img) {
 
   std::cout << "Pixel count: " << count << std::endl;
 
-  std::string count_str = std::string{count};
+  std::string count_str = std::to_string(count);
   std_msgs::String msg;
   msg.data = count_str;
   moving_gate_pub.publish(msg);
@@ -226,13 +225,11 @@ void findMovingGate(cv::Mat &img) {
 void imageCallback(const cv::Mat &img_ret, uint64_t time_stamp) {
   // convert OpenCV image to ROS message
   cv::Mat img = img_ret.clone();
-  std::cout << "rotating image" << std::endl;
   rot90(img, 1);
-  std::cout << "finding corners" << std::endl;
   findCorners(img);
 
   if(DETECT_MOVING_GATE) {
-    findMovingGate();
+    findMovingGate(img);
   }
 }
 
