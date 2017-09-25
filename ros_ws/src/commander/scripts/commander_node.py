@@ -147,7 +147,7 @@ class Controller:
                 self.log("Reached hover height!")
         elif self.mode == "Landing":
             goal_vel.linear.z = -0.2
-            if self.cur_pose[2] < ARRIVAL_DISTANCE or (self.cur_pose[2] < LAND_THRESH and d[2] < LAND_SPEED_THRESH):
+            if (self.cur_pose[2] < LAND_THRESH and d[2] < LAND_SPEED_THRESH):
                 self.mode = "Idle"
                 self.log("Landed!")
                 self.prop_stop_pub.publish(Empty())
