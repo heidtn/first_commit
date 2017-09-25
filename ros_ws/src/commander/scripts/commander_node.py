@@ -75,10 +75,12 @@ class Controller:
         pass #self.logfile.close()
 
     def handle_bias(self, msg):
-        self.bias = np.array([msg.linear.x,
+        bias = np.array([msg.linear.x,
                               msg.linear.y,
                               msg.linear.z,
                               0])
+        if not np.isnan(bias).any():
+            self.bias = bias
 
     def pose_callback(self, msg):
         if msg.header.frame_id != "/odom":
