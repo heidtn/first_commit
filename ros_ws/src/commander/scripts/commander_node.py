@@ -24,6 +24,9 @@ PLAY_SPEED = 0.5
 
 FLIGHT_ENABLED = True
 
+USE_TWIST = False
+USE_BIAS = True
+
 def q_to_yaw(q):
     return np.arctan2(2.0*(q.x*q.y + q.w*q.z), 1-2*(q.y*q.y + q.z*q.z))
 
@@ -40,6 +43,8 @@ class Controller:
 
         # ROS sucscribers
         rospy.Subscriber("/fc/cmd/pose", Twist, self.pathgen_pose)
+        if USE_BIAS:
+            rospy.Subscriber("/fc/cmd/visaligned_pose", Twist, self.handle_bias)
         rospy.Subscriber("/pose", PoseStamped, self.pose_callback)
         rospy.Subscriber("/fc/path/status", PathGenStatus, self.pathgen_status)
 
@@ -56,7 +61,8 @@ class Controller:
         self.last_time = time.time()
         self.integration = np.array([0, 0, 0, 0])
         self.integration_max = .5
-
+        
+        self.bias = np.array([0., 0., 0.])
 
         self.endtime = 99999999
         self.currenttime = 0
@@ -68,30 +74,32 @@ class Controller:
     def __del__(self):
         pass #self.logfile.close()
 
+    def handle_bias(self, msg):
+        self.bias = np.array([msg.linear.x,
+                              msg.linear.y,
+                              msg.linear.z,
+                              0])
+
     def pose_callback(self, msg):
         if msg.header.frame_id != "/odom":
             return
+        
+        if not USE_TWIST:
+            q = msg.pose.orientation
+            yaw = q_to_yaw(q)
 
-        q = msg.pose.orientation
-        yaw = q_to_yaw(q)
+            measured_pose = np.array([msg.pose.position.x,
+                                      msg.pose.position.y,
+                                      msg.pose.position.z,
+                                      yaw])
+        else:
+           measure_pose = np.array([msg.linear.x,
+                                    msg.linear.y,
+                                    msg.linear.z,
+                                    msg.angular.z])
 
-        # Need to set first base pose depending on where we start this program
-        # TODO(heidt) if we have the global landmark matcher, we need to get rid
-        # of this base_pose or a landmark match will wreck the system
-        if self.base_pose is None:
-            self.base_pose = np.array([msg.pose.position.x,
-                                       msg.pose.position.y,
-                                       msg.pose.position.z,
-                                       yaw])
-            self.log("base pose is".format(self.base_pose))
-            
-            return            
-
-        measured_pose = np.array([msg.pose.position.x,
-                                  msg.pose.position.y,
-                                  msg.pose.position.z,
-                                  yaw])
-        self.cur_pose = measured_pose   # - self.base_pose
+        self.cur_pose = measured_pose
+	self.cur_pose = self.cur_pose - self.bias
 
         # Proportional controller
         E = self.goal_pose - self.cur_pose
