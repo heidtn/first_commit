@@ -137,8 +137,10 @@ void findCorners(cv::Mat &img) {
       big_corners, corner_thresh;
 
   if(save_images) {
-    std::string ms_str = std::to_string(ros::Time::now());
-    cv::imwrite("/home/linaro/temp_ims/" + ms_str + ".jpg", img);
+    auto t = ros::Time::now();
+    std::string ms_str = std::to_string(t.sec);
+    auto n_str = std::to_string(t.nsec);
+    cv::imwrite("/home/linaro/temp_ims/" + ms_str + "." + n_str + ".jpg", img);
   }
 
   // Convert to HSV and threshold

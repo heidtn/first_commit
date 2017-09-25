@@ -19,7 +19,7 @@ LAND_THRESH = 0.5
 LAND_SPEED_THRESH = 0.05
 
 ARRIVAL_DISTANCE = 0.15
-HOVER_HEIGHT = 1.0
+HOVER_HEIGHT = 1.76
 PLAY_SPEED = 0.5
 
 FLIGHT_ENABLED = True
@@ -51,7 +51,7 @@ class Controller:
         # Ziegler nichols, assume 1 for Ku, 2 for Tu
         self.Kp = np.array([1.2, 1.2, 1.2, 1.8])
         self.Ki = np.array([.6, .6, .6, .8])
-        self.Kd = np.array([.07, .07, .07, .1])
+        self.Kd = np.array([.05, .05, .05, .1])
         self.previous_error = 0
         self.last_time = time.time()
         self.integration = np.array([0, 0, 0, 0])
