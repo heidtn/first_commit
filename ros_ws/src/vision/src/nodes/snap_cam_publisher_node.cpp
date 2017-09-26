@@ -40,7 +40,7 @@ const double F_X = 279.60814589461154;
 const double F_Y = 280.1693782018111;
 const double C_X = 222.49106441516423;
 const double C_Y = 317.7691476613439;
-const double CORNERINESS = .04;
+const double CORNERINESS = 1.0;
 const bool DETECT_MOVING_GATE = false;
 bool save_images = false;
 
@@ -145,29 +145,33 @@ void findCorners(cv::Mat &img) {
 
   // Convert to HSV and threshold
   cv::cvtColor(img, hsv, CV_BGR2HSV);
-  cv::inRange(hsv, cv::Scalar(6, 80, 130), cv::Scalar(16, 255, 255), mask);
+  cv::inRange(hsv, cv::Scalar(0, 70, 50), cv::Scalar(18, 255, 255), mask);
+  filterNoise(mask, 130);
 
-  // Dilate and remove noise
-  // TODO(heidt) the morphology method might be improved
-  cv::dilate(mask, dilated, cv::Mat());
+  // smooth
+  cv::Mat newkernel(cv::Size(3, 3), CV_8UC1, cv::Scalar(0));
+  cv::dilate(mask, mask, newkernel, cv::Point(-1, -1), 2, 1, 1);
+  cv::GaussianBlur(mask, mask, cv::Size(11, 11), 0, 0);
+  threshold(mask, mask, 10, 255, CV_THRESH_BINARY);
 
-  filterNoise(dilated);
 
-  // thinning(dilated);
-  cv::Mat newkernel(cv::Size(9, 9), CV_8UC1, cv::Scalar(0));
-  cv::dilate(dilated, dilated, newkernel, cv::Point(-1, -1), 2, 1, 1);
+  // Heavy erode
+  int erosion_size = 15;  
+  cv::Mat element = getStructuringElement(cv::MORPH_CROSS,
+              cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
+              cv::Point(erosion_size, erosion_size) );
+ 
+  cv::erode(mask, mask, element);
+  filterNoise(mask, 1000);
 
-  cv::dilate(dilated, diltaed_thinned, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
-  filterNoise(diltaed_thinned, 200);
-
-  cornerHarris(diltaed_thinned, corners, 16, 1, 0.04);
-
+  // Extract corners
+  cornerHarris(mask, corners, 28, 5, 0.04);
   cv::dilate(corners, big_corners, cv::Mat(), cv::Point(-1, -1), 2, 1, 1);
 
   double min, max;
   cv::minMaxLoc(big_corners, &min, &max);
 
-  // TODO(heidt) fix double corners)
+  // threshold bad corners
   threshold(big_corners, corner_thresh, 0.5 * cv::min(max, CORNERINESS), 255,
             CV_THRESH_BINARY);
   corner_thresh.convertTo(corner_thresh, CV_8UC1);
